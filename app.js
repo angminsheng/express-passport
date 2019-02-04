@@ -14,6 +14,8 @@ const passport = require("passport");
 const User = require("./models/User");
 const LocalStrategy = require("passport-local").Strategy;
 const flash = require("connect-flash");
+const SlackStrategy = require('passport-slack').Strategy;
+
 
 
 
@@ -69,23 +71,51 @@ passport.deserializeUser((id, cb) => {
 // This is used for the login
 app.use(flash());
 passport.use(new LocalStrategy(
-  { passReqToCallback: true },
-  (req, username, password, done) => {
-  console.log('LocalStrategy', username, password);
-  User.findOne({ username }, (err, user) => {
+  { 
+    passReqToCallback: true, 
+    usernameField: 'email', // default: 'username', 
+    // passwordField: 'password', // default: 'password'
+  },
+  (req, email, password, done) => { // username->email
+  console.log('LocalStrategy', email, password);
+  User.findOne({ email:email }, (err, user) => {
     if (err) {
       return done(err);
     }
     if (!user) {
-      return done(null, false, { message: "Incorrect username" });
+      return done(null, false, { message: "Incorrect email" });
     }
     if (!bcrypt.compareSync(password, user.password)) {
       return done(null, false, { message: "Incorrect password" });
     }
-
     return done(null, user);
   });
 }));
+// NEW
+passport.use(new SlackStrategy({
+  clientID: "2432150752.540770117489",
+  clientSecret: "8b0d437a4cf194f6fcf167d899361d89",
+  scope: ['emoji:read','team:read']
+}, (accessToken, refreshToken, profile, done) => {
+	console.log('TCL: profile', profile)
+  User.findOne({ slackID: profile.id })
+  .then(user => {
+    if (user) {
+      return done(null, user);
+    }
+    User.create({
+      slackID: profile.id,
+      email: profile.user.email,
+      name: profile.user.name,
+      pictureUrl: profile.user.image_1024,
+    })
+    .then(user => {
+      done(null, user);
+    })
+  })
+  .catch(done)
+}))
+
 
 
 // default value for title local
